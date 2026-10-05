@@ -469,10 +469,16 @@ setInterval(() => {
 
 // ─── Start server ──────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`\n🚀 SALESTORM Simulation Server active at http://localhost:${PORT}`);
-  console.log(`   🎛️ Control Room: http://localhost:${PORT}`);
-  console.log(`   🌐 3D Infrastructure: Three.js WebGL ready`);
-  console.log(`   🛡️ Invariant Sentinel: Active (6 continuous assertions)\n`);
-  getDb();
-});
+
+if (require.main === module || !process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`\n🚀 SALESTORM Simulation Server active at http://localhost:${PORT}`);
+    console.log(`   🎛️ Control Room: http://localhost:${PORT}`);
+    console.log(`   🌐 3D Infrastructure: Three.js WebGL ready`);
+    console.log(`   🛡️ Invariant Sentinel: Active (6 continuous assertions)\n`);
+    getDb();
+  });
+}
+
+module.exports = app;
+module.exports.server = server;
