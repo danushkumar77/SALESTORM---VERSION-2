@@ -470,7 +470,7 @@ setInterval(() => {
 // ─── Start server ──────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 
-if (require.main === module || !process.env.VERCEL) {
+if (require.main === module) {
   server.listen(PORT, () => {
     console.log(`\n🚀 SALESTORM Simulation Server active at http://localhost:${PORT}`);
     console.log(`   🎛️ Control Room: http://localhost:${PORT}`);
