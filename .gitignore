@@ -1,0 +1,9 @@
+node_modules/
+salestorm-sim/node_modules/
+salestorm-sim/db/*.db-journal
+salestorm-sim/db/*.db-wal
+salestorm-sim/db/*.db-shm
+*.log
+.DS_Store
+.env
+.vercel

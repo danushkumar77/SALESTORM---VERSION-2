@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SALESTORM — Flash Sale System Design Simulation & Control Room</title>
+  <meta name="description" content="High-concurrency flash sale simulation validating inventory atomic CAS, load balancing, idempotency, async queue decoupling, and fault tolerance for SYSCRAFTERS 2026." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- Three.js for 3D Infrastructure -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <!-- Top Header Bar -->
+  <header class="header">
+    <div class="header-left">
+      <div class="brand-logo">⚡ SALESTORM <span style="font-size:12px;color:#94a3b8;font-weight:500;">CONTROL ROOM</span></div>
+      <div class="hackathon-badge">SYSCRAFTERS 2026</div>
+    </div>
+
+    <!-- 3 Core Navigation Views + Jury Mode -->
+    <div class="view-tabs">
+      <button class="view-tab active" onclick="switchView('control-room')">🖥️ Control Room</button>
+      <button class="view-tab" onclick="switchView('infra-3d')">🌐 3D Infrastructure</button>
+      <button class="view-tab" onclick="switchView('deep-dive')">🔬 Deep Dive & Ledger</button>
+      <button class="view-tab" onclick="switchView('jury-mode')">🏆 Jury Demo Mode</button>
+    </div>
+
+    <div class="header-right">
+      <div class="ws-indicator" id="ws-status">⬤ WS CONNECTED</div>
+      <button class="btn btn-outline" id="btn-config-server" onclick="promptBackendUrl()" style="padding:6px 10px;font-size:12px;border:1px solid rgba(56, 189, 248, 0.4);color:var(--neon-cyan);" title="Configure Backend API / Render Host">⚙️ Host</button>
+      <button class="btn btn-outline" id="btn-lock" onclick="lockConsole()" style="padding:6px 12px;font-size:12px;border:1px solid rgba(239, 68, 68, 0.4);color:#fca5a5;">🔒 Lock</button>
+      <button class="btn btn-danger" onclick="resetSystem()" style="padding:6px 12px;font-size:12px;">🔄 Reset System</button>
+    </div>
+  </header>
+
+  <!-- Invariant Safety Sentinel Banner (6 Live Invariant Assertions) -->
+  <section class="invariant-banner" id="invariant-banner">
+    <div class="invariant-title">🛡️ INVARIANT SENTINEL:</div>
+    <div class="invariant-items">
+      <div class="invariant-badge" id="inv-no-oversell">✓ 0 Overselling</div>
+      <div class="invariant-badge" id="inv-non-negative">✓ Stock ≥ 0</div>
+      <div class="invariant-badge" id="inv-conservation">✓ Conservation Equilibrium</div>
+      <div class="invariant-badge" id="inv-idempotency">✓ Idempotency Guarded</div>
+      <div class="invariant-badge" id="inv-exactly-once">✓ Exactly-Once Orders</div>
+      <div class="invariant-badge" id="inv-auto-recovery">✓ Auto-Release Expired</div>
+    </div>
+  </section>
+
+  <!-- Global Live Telemetry Grid -->
+  <section class="telemetry-grid" style="padding: 16px 24px 0 24px;">
+    <div class="metric-card highlight">
+      <div class="metric-label">Concurrent Traffic</div>
+      <div class="metric-value" id="val-traffic">0</div>
+    </div>
+    <div class="metric-card success">
+      <div class="metric-label">Available Stock</div>
+      <div class="metric-value" id="val-available">100</div>
+    </div>
+    <div class="metric-card warning">
+      <div class="metric-label">Reserved Units</div>
+      <div class="metric-value" id="val-reserved">0</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Sold Units</div>
+      <div class="metric-value" id="val-sold">0</div>
+    </div>
+    <div class="metric-card danger">
+      <div class="metric-label">Oversold Count</div>
+      <div class="metric-value" id="val-oversold">0</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Confirmed Orders</div>
+      <div class="metric-value" id="val-orders">0</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Queue Depth</div>
+      <div class="metric-value" id="val-queue">0</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">P99 Latency</div>
+      <div class="metric-value" id="val-latency">18ms</div>
+    </div>
+  </section>
+
+  <!-- ============================================================== -->
+  <!-- VIEW 1: CONTROL ROOM (Main Operational Dashboard)              -->
+  <!-- ============================================================== -->
+  <main class="view-container active" id="view-control-room">
+    <div class="control-room-layout">
+
+      <!-- Left Column: Simulation Controls & Load Balancer -->
+      <section class="panel-left">
+        <!-- Scenario Presets -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">🎮 Simulation Presets</span>
+            <span class="hackathon-badge">Direct Execution</span>
+          </div>
+          <div class="scenario-button-grid">
+            <button class="btn btn-primary" onclick="launch10kSimulation()">
+              <span>⚡ Run 10K Flash Sale</span>
+              <span style="font-size:11px;opacity:0.8;">10,000 reqs / 100 stock</span>
+            </button>
+            <button class="btn" onclick="launchLastItemRace()">
+              <span>🏁 Last-Item Race Demo</span>
+              <span style="font-size:11px;opacity:0.8;">2 concurrent reqs, 1 stock</span>
+            </button>
+            <button class="btn" onclick="launchDuplicateTest()">
+              <span>🔁 Duplicate Idempotency Test</span>
+              <span style="font-size:11px;opacity:0.8;">Same key duplicate</span>
+            </button>
+            <button class="btn" onclick="launchOrderOutageTest()">
+              <span>💥 Order Service 30s Outage</span>
+              <span style="font-size:11px;opacity:0.8;">Queue buffer test</span>
+            </button>
+            <button class="btn" onclick="toggleCircuitBreaker()">
+              <span id="cb-label">🔴 Trip Payment Circuit Breaker</span>
+              <span style="font-size:11px;opacity:0.8;">Simulate 100% fail</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Load Balancer & Time Buffering -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">⚖️ Load Balancer & Buffer</span>
+            <span class="hackathon-badge" id="lb-algo-badge">ROUND_ROBIN</span>
+          </div>
+          <div class="lb-controls">
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;">Routing Algorithm</label>
+              <select class="select-input" id="select-lb-algo" onchange="updateLbConfig()">
+                <option value="ROUND_ROBIN">Round Robin</option>
+                <option value="LEAST_CONN">Least Connections</option>
+                <option value="IP_HASH">IP Hash (Sticky Session)</option>
+                <option value="WEIGHTED_LATENCY">Weighted Latency</option>
+              </select>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+                <span style="color:var(--text-muted);">Leaky Bucket Leak Rate</span>
+                <span id="lbl-leak-rate" style="font-family:var(--font-mono);color:var(--neon-cyan);">250 req/s</span>
+              </div>
+              <input type="range" class="slider-input" min="50" max="1000" step="50" value="250" id="slider-leak-rate" oninput="updateLbConfig()" />
+            </div>
+            <div class="pod-grid" id="pod-grid">
+              <div class="pod-card healthy" id="pod-1-card">Pod A: <span id="pod-1-conns">0 conns</span></div>
+              <div class="pod-card healthy" id="pod-2-card">Pod B: <span id="pod-2-conns">0 conns</span></div>
+              <div class="pod-card healthy" id="pod-3-card">Pod C: <span id="pod-3-conns">0 conns</span></div>
+              <div class="pod-card healthy" id="pod-4-card">Pod D: <span id="pod-4-conns">0 conns</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Middle Column: Dynamic Architecture Flow & Live Charts -->
+      <section class="panel-mid">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">🏗️ Live Microservice Architecture Flow</span>
+            <span style="font-size:11px;color:var(--neon-green);" id="flow-status">● System Normal</span>
+          </div>
+          <!-- Real-Time Interactive Topology Node Diagram -->
+          <div style="background:#050811;border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:16px;">
+            <div class="sm-flow">
+              <div class="sm-node" id="node-cust">👥 Traffic</div>
+              <div class="sm-arrow">→</div>
+              <div class="sm-node" id="node-lb">⚖️ LB / Buffer</div>
+              <div class="sm-arrow">→</div>
+              <div class="sm-node" id="node-inv">📦 Inventory CAS</div>
+              <div class="sm-arrow">→</div>
+              <div class="sm-node" id="node-pay">💰 Payment Hub</div>
+              <div class="sm-arrow">→</div>
+              <div class="sm-node" id="node-mq">📨 Message Queue</div>
+              <div class="sm-arrow">→</div>
+              <div class="sm-node" id="node-ord">📋 Order Service</div>
+            </div>
+            <!-- Live Canvas Line Chart -->
+            <canvas id="inv-chart" height="130" style="width:100%;margin-top:10px;"></canvas>
+          </div>
+        </div>
+
+        <!-- Outcome Metrics -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">📊 Execution Outcome Distribution</span>
+            <span style="font-size:11px;color:var(--text-muted);">Real-Time Simulation</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;font-family:var(--font-mono);font-size:12px;">
+            <div style="background:rgba(16,185,129,0.1);padding:8px;border-radius:6px;border-left:3px solid var(--neon-green);">
+              <div style="color:var(--text-muted);font-size:10px;">SUCCESSFUL</div>
+              <div style="font-weight:700;color:var(--neon-green);font-size:16px;" id="out-success">0</div>
+            </div>
+            <div style="background:rgba(239,68,68,0.1);padding:8px;border-radius:6px;border-left:3px solid var(--neon-red);">
+              <div style="color:var(--text-muted);font-size:10px;">OUT OF STOCK</div>
+              <div style="font-weight:700;color:var(--neon-red);font-size:16px;" id="out-oos">0</div>
+            </div>
+            <div style="background:rgba(245,158,11,0.1);padding:8px;border-radius:6px;border-left:3px solid var(--neon-amber);">
+              <div style="color:var(--text-muted);font-size:10px;">PAY FAIL / TIMEOUT</div>
+              <div style="font-weight:700;color:var(--neon-amber);font-size:16px;" id="out-payfail">0</div>
+            </div>
+            <div style="background:rgba(59,130,246,0.1);padding:8px;border-radius:6px;border-left:3px solid var(--neon-blue);">
+              <div style="color:var(--text-muted);font-size:10px;">DUPLICATES FILTERED</div>
+              <div style="font-weight:700;color:var(--neon-blue);font-size:16px;" id="out-dup">0</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Live Distributed Event Stream -->
+      <section class="panel-right">
+        <div class="card" style="height:100%;">
+          <div class="card-header">
+            <span class="card-title">⚡ Distributed Event Log & Traces</span>
+            <button class="btn" onclick="clearEventLogs()" style="padding:2px 8px;font-size:11px;">Clear</button>
+          </div>
+          <div class="event-log-container" id="event-log-container">
+            <div class="log-entry info">
+              <span class="log-ts">[00:00:00]</span>
+              <span>System initialized. Ready for high-concurrency simulation.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ============================================================== -->
+  <!-- VIEW 2: 3D INFRASTRUCTURE TOPOLOGY (Three.js WebGL)             -->
+  <!-- ============================================================== -->
+  <main class="view-container" id="view-infra-3d">
+    <div class="infra-3d-wrapper">
+      <!-- Camera Preset Overlays -->
+      <div class="canvas-overlay-controls">
+        <button class="btn-cam" onclick="window.infra3d?.setCameraPreset('OVERVIEW')">🌐 Overview</button>
+        <button class="btn-cam" onclick="window.infra3d?.setCameraPreset('LOAD_BALANCER')">⚖️ Load Balancer</button>
+        <button class="btn-cam" onclick="window.infra3d?.setCameraPreset('INVENTORY')">📦 Inventory Vault</button>
+        <button class="btn-cam" onclick="window.infra3d?.setCameraPreset('QUEUE')">📨 3D Message Queue</button>
+        <button class="btn-cam" onclick="window.infra3d?.setCameraPreset('ORDER')">📋 Order Cluster</button>
+      </div>
+      <div id="canvas3d-container"></div>
+    </div>
+  </main>
+
+  <!-- ============================================================== -->
+  <!-- VIEW 3: COMPONENT DEEP DIVE & DATABASE LEDGER                   -->
+  <!-- ============================================================== -->
+  <main class="view-container" id="view-deep-dive">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+      <!-- State Machine Lifecycle -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🔄 Reservation & Order State Machine</span>
+        </div>
+        <div style="padding:10px;background:#050811;border-radius:8px;font-family:var(--font-mono);font-size:12px;line-height:1.8;">
+          <div style="color:var(--neon-cyan);">AVAILABLE ──(Atomic CAS)──► RESERVED</div>
+          <div style="color:var(--neon-amber);margin-left:20px;">├──(Payment Fail / TTL Expiry)──► RELEASED (Stock returned to Available)</div>
+          <div style="color:var(--neon-green);margin-left:20px;">└──(Payment Succeeded)──► PAYMENT_PENDING ──► CONFIRMED ──► SOLD</div>
+        </div>
+      </div>
+
+      <!-- Live Database Tables -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🗄️ Relational Database Ledger</span>
+          <button class="btn" onclick="refreshDbTables()" style="padding:4px 8px;font-size:11px;">Refresh</button>
+        </div>
+        <div class="table-wrapper" style="max-height:260px;overflow-y:auto;">
+          <table class="data-table" id="db-orders-table">
+            <thead>
+              <tr><th>Order ID</th><th>Customer</th><th>Amount</th><th>Status</th><th>Idempotency Key</th></tr>
+            </thead>
+            <tbody id="db-orders-tbody">
+              <tr><td colspan="5" style="color:var(--text-muted);text-align:center;">No orders recorded yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============================================================== -->
+  <!-- VIEW 4: JURY DEMO MODE (Guided Evaluation Walkthrough)          -->
+  <!-- ============================================================== -->
+  <main class="view-container" id="view-jury-mode">
+    <div class="card" style="max-width:850px;margin:0 auto;">
+      <div class="card-header">
+        <span class="card-title">🏆 SALESTORM Guided Jury Walkthrough</span>
+        <span class="hackathon-badge">SYSCRAFTERS 2026</span>
+      </div>
+      <div style="font-size:14px;line-height:1.6;color:var(--text-secondary);margin-bottom:16px;">
+        This automated walkthrough demonstrates how our architecture guarantees <strong>Zero Overselling</strong>, <strong>Idempotency</strong>, and <strong>Fault Recovery</strong> under extreme traffic conditions.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;" id="jury-steps">
+        <div class="btn" onclick="runJuryStep(1)"><span>1️⃣ Step 1: Baseline Stock Check (100 units in DB)</span><span>▶ Run</span></div>
+        <div class="btn" onclick="runJuryStep(2)"><span>2️⃣ Step 2: High Concurrency 10,000 Burst Simulation</span><span>▶ Run</span></div>
+        <div class="btn" onclick="runJuryStep(3)"><span>3️⃣ Step 3: Concurrency CAS Race Condition Proof</span><span>▶ Run</span></div>
+        <div class="btn" onclick="runJuryStep(4)"><span>4️⃣ Step 4: Idempotency & Duplicate Request Protection</span><span>▶ Run</span></div>
+        <div class="btn" onclick="runJuryStep(5)"><span>5️⃣ Step 5: Order Service Outage & Queue Decoupling</span><span>▶ Run</span></div>
+        <div class="btn" onclick="runJuryStep(6)"><span>6️⃣ Step 6: Final Mathematical Invariant Verification</span><span>▶ Run</span></div>
+      </div>
+      <div id="jury-report" style="margin-top:20px;padding:16px;background:#050811;border-radius:8px;border:1px solid var(--border-color);display:none;"></div>
+    </div>
+  </main>
+
+  <!-- Simulation Result Modal -->
+  <div class="modal-overlay" id="result-modal" style="display:none;" onclick="closeModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="modal-title" style="color:var(--neon-cyan);">Simulation Results</h3>
+        <button class="btn-close" onclick="document.getElementById('result-modal').style.display='none'">✕</button>
+      </div>
+      <div id="modal-body" style="font-size:13px;line-height:1.6;color:var(--text-secondary);"></div>
+    </div>
+  </div>
+
+  <!-- System Lock / Auth Gateway Overlay -->
+  <div id="auth-lock-overlay" class="auth-lock-overlay">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-icon-ring">
+          <div class="auth-icon">🔒</div>
+        </div>
+        <div class="auth-badge">SYSTEM LOCKED · AUTHORIZED ACCESS ONLY</div>
+        <h2 class="auth-title">⚡ SALESTORM GATEWAY</h2>
+        <p class="auth-subtitle">Enter security passcode to unlock real-time cluster telemetry, simulation controls, and 3D engine.</p>
+      </div>
+
+      <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="auth-form">
+        <div class="auth-input-group">
+          <label for="auth-password" class="auth-label">Security Passcode</label>
+          <div class="auth-input-wrapper">
+            <input 
+              type="password" 
+              id="auth-password" 
+              placeholder="Enter passcode..." 
+              autocomplete="current-password"
+              required 
+            />
+            <button type="button" class="auth-toggle-pwd" onclick="togglePasswordVisibility()" title="Toggle visibility">👁️</button>
+          </div>
+          <div id="auth-error-msg" class="auth-error-msg"></div>
+        </div>
+
+        <button type="submit" id="auth-submit-btn" class="btn btn-primary auth-submit-btn">
+          <span>🔓 Unlock Control Room</span>
+        </button>
+
+        <div style="margin-top:14px;text-align:center;">
+          <a href="javascript:void(0)" onclick="promptBackendUrl()" style="font-size:11px;color:var(--neon-cyan);text-decoration:none;opacity:0.85;">⚙️ Configure Backend Host (Render / Remote API)</a>
+        </div>
+      </form>
+
+      <div class="auth-footer">
+        <div class="auth-footer-tag">🛡️ Invariant Guard Active</div>
+        <div class="auth-footer-tag">🔑 Session Encrypted</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="threeTopology.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

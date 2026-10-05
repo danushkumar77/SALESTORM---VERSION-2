@@ -1,0 +1,14 @@
+{
+  "name": "salestorm-system",
+  "version": "1.0.0",
+  "description": "SALESTORM Flash Sale System Design Simulator - SYSCRAFTERS 2026",
+  "scripts": {
+    "start": "cd salestorm-sim && npm start",
+    "dev": "cd salestorm-sim && npm run dev",
+    "install:all": "cd salestorm-sim && npm install"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "ISC"
+}

@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: salestorm-backend
+    env: node
+    plan: free
+    rootDir: salestorm-sim
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_PASSWORD
+        value: RecursionRebbel
