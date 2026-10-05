@@ -2,7 +2,7 @@
   "name": "salestorm-sim",
   "version": "1.0.0",
   "description": "SALESTORM Flash Sale System Design Simulator - SYSCRAFTERS 2026",
-  "main": "server.js",
+  "main": "app.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
