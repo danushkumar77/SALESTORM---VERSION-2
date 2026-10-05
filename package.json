@@ -2,8 +2,22 @@
   "name": "salestorm-v2",
   "version": "1.0.0",
   "description": "SALESTORM Flash Sale System Design Simulator - SYSCRAFTERS 2026",
+  "main": "salestorm-sim/server.js",
   "scripts": {
-    "build": "echo 'Frontend ready'",
-    "start": "cd salestorm-sim && npm start"
-  }
+    "build": "cd salestorm-sim && npm install",
+    "postinstall": "cd salestorm-sim && npm install",
+    "start": "node salestorm-sim/server.js",
+    "dev": "node salestorm-sim/server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "uuid": "^14.0.2",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "ISC"
 }
